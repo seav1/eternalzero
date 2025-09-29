@@ -4,7 +4,7 @@ from playwright.sync_api import sync_playwright, Cookie
 
 def add_server_time(server_url="https://gpanel.eternalzero.cloud/server/6b6f8709"):
     """
-    尝试登录 gamepanel2.gtxgaming.co.uk 并点击 "ADD 6H" 按钮。
+    尝试登录 gpanel.eternalzero.cloud 并点击 "ADD 6H" 按钮。
     优先使用 REMEMBER_WEB_COOKIE 进行会话登录，如果不存在则回退到邮箱密码登录。
     """
     # 获取环境变量
@@ -105,20 +105,39 @@ def add_server_time(server_url="https://gpanel.eternalzero.cloud/server/6b6f8709
                     page.screenshot(path="server_page_nav_fail.png")
                     return False
 
-            # --- 查找并点击 "ADD 6H" 按钮 ---
+            # --- 查找 "ADD 6H" 按钮并检查是否可点击 ---
             add_button_selector = 'button:has-text("ADD 6H")' # 修改按钮文本
-            print(f"正在查找并等待 '{add_button_selector}' 按钮")
+            print(f"正在查找 '{add_button_selector}' 按钮")
 
             try:
                 page.wait_for_selector(add_button_selector, state='visible', timeout=30000)
-                page.click(add_button_selector)
-                print("成功点击 'ADD 6H' 按钮。")
-                time.sleep(5)
-                print("等待 5 秒后继续。")
-                return True
+                button = page.query_selector(add_button_selector)
+                
+                if button:
+                    # 检查按钮是否被禁用
+                    is_disabled = button.is_disabled()
+                    has_disabled_attr = button.get_attribute('disabled') is not None
+                    
+                    if is_disabled or has_disabled_attr:
+                        print("'ADD 6H' 按钮当前不可点击（已禁用），无需续期。")
+                        page.screenshot(path="button_disabled.png")
+                        return True  # 返回 True 表示任务完成（无需续期）
+                    else:
+                        print("'ADD 6H' 按钮可点击，正在执行点击操作...")
+                        page.click(add_button_selector)
+                        print("成功点击 'ADD 6H' 按钮。")
+                        time.sleep(5)
+                        print("等待 5 秒后继续。")
+                        page.screenshot(path="button_clicked.png")
+                        return True
+                else:
+                    print("未找到 'ADD 6H' 按钮元素。")
+                    page.screenshot(path="button_not_found.png")
+                    return False
+                    
             except Exception as e:
-                print(f"未找到 'ADD 6H' 按钮或点击失败: {e}")
-                page.screenshot(path="extend_button_not_found.png")
+                print(f"查找或处理 'ADD 6H' 按钮时发生错误: {e}")
+                page.screenshot(path="extend_button_error.png")
                 return False
 
         except Exception as e:
