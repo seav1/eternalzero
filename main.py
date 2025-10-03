@@ -2,7 +2,7 @@ import os
 import time
 from playwright.sync_api import sync_playwright, Cookie
 
-def add_server_time(server_url="https://gpanel.eternalzero.cloud/server/a676fb5c", max_retries=3):
+def add_server_time(server_url="https://gpanel.eternalzero.cloud/server/0455478b", max_retries=3):
     """
     尝试登录 gpanel.eternalzero.cloud 并点击 "ADD 6H" 按钮。
     优先使用 REMEMBER_WEB_COOKIE 进行会话登录，如果不存在则回退到邮箱密码登录。
