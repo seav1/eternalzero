@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write  # 用于更新 repository secrets
 
     steps:
     - name: Check out repository
@@ -22,10 +23,17 @@ jobs:
       with:
         python-version: '3.x' # 使用最新的 Python 3 版本
         
-    - name: Install Playwright
+    - name: Install dependencies
       run: |
-        pip install playwright
+        pip install playwright requests PyNaCl
         playwright install chromium # 安装 Chromium 浏览器
+
+    - name: Install GitHub CLI
+      run: |
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+        sudo apt update
+        sudo apt install gh
 
     - name: Run Python script
       env:
@@ -33,6 +41,9 @@ jobs:
         REMEMBER_WEB_COOKIE: ${{ secrets.REMEMBER_WEB_COOKIE }}
         LOGIN_EMAIL: ${{ secrets.LOGIN_EMAIL }}
         LOGIN_PASSWORD: ${{ secrets.LOGIN_PASSWORD }}
+        GH_PAT: ${{ secrets.GH_PAT }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: python main.py
 
     - name: Commit time.txt to repo
