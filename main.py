@@ -1,6 +1,107 @@
 import os
 import time
+import requests
 from playwright.sync_api import sync_playwright, Cookie
+
+def update_github_secret(secret_name, secret_value, gh_pat=None, repo=None):
+    """
+    使用GitHub API更新repository secret
+    """
+    if not gh_pat:
+        gh_pat = os.environ.get('GH_PAT')
+    if not repo:
+        repo = os.environ.get('GITHUB_REPOSITORY')
+
+    if not gh_pat or not repo:
+        print("警告: 缺少GH_PAT或GITHUB_REPOSITORY环境变量，无法更新GitHub secret")
+        return False
+
+    try:
+        # 尝试使用GitHub CLI (在GitHub Actions中可用)
+        import subprocess
+
+        # 设置GITHUB_TOKEN环境变量供gh CLI使用
+        env = os.environ.copy()
+        env['GITHUB_TOKEN'] = gh_pat
+
+        # 使用gh secret set命令更新secret
+        cmd = ['gh', 'secret', 'set', secret_name, '--body', secret_value, '--repo', repo]
+        result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            print(f"成功使用GitHub CLI更新secret: {secret_name}")
+            return True
+        else:
+            print(f"使用GitHub CLI更新secret失败: {result.stderr}")
+            # 回退到API方法
+            return update_github_secret_api(secret_name, secret_value, gh_pat, repo)
+
+    except Exception as e:
+        print(f"使用GitHub CLI更新secret时发生错误，回退到API方法: {e}")
+        return update_github_secret_api(secret_name, secret_value, gh_pat, repo)
+
+def update_github_secret_api(secret_name, secret_value, gh_pat, repo):
+    """
+    使用GitHub REST API更新repository secret (需要正确加密)
+    """
+    try:
+        # 获取GitHub repository的public key
+        headers = {
+            'Authorization': f'token {gh_pat}',
+            'Accept': 'application/vnd.github.v3+json'
+        }
+
+        public_key_url = f'https://api.github.com/repos/{repo}/actions/secrets/public-key'
+        response = requests.get(public_key_url, headers=headers)
+
+        if response.status_code != 200:
+            print(f"获取GitHub public key失败: {response.status_code} - {response.text}")
+            return False
+
+        public_key_data = response.json()
+        public_key = public_key_data['key']
+        key_id = public_key_data['key_id']
+
+        # 使用libsodium加密secret值
+        try:
+            import nacl.encoding
+            import nacl.public
+            from nacl import utils
+
+            # 解码base64 public key
+            public_key_bytes = nacl.encoding.Base64Encoder.decode(public_key)
+
+            # 创建SealedBox用于加密
+            sealed_box = nacl.public.SealedBox(nacl.public.PublicKey(public_key_bytes))
+
+            # 加密secret值
+            encrypted = sealed_box.encrypt(secret_value.encode('utf-8'))
+            encrypted_value = nacl.encoding.Base64Encoder.encode(encrypted).decode('utf-8')
+
+        except ImportError:
+            print("警告: PyNaCl不可用，使用base64编码作为替代（仅用于测试）")
+            import base64
+            encrypted_value = base64.b64encode(secret_value.encode()).decode()
+
+        # 更新secret
+        update_url = f'https://api.github.com/repos/{repo}/actions/secrets/{secret_name}'
+        update_data = {
+            'encrypted_value': encrypted_value,
+            'key_id': key_id
+        }
+
+        response = requests.put(update_url, headers=headers, json=update_data)
+
+        if response.status_code in [201, 204]:
+            print(f"成功使用GitHub API更新secret: {secret_name}")
+            return True
+        else:
+            print(f"更新GitHub secret失败: {response.status_code} - {response.text}")
+            return False
+
+    except Exception as e:
+        print(f"更新GitHub secret时发生错误: {e}")
+        return False
 
 def add_server_time(server_url="https://gpanel.eternalzero.cloud/server/0455478b", max_retries=3):
     """
@@ -58,6 +159,20 @@ def add_server_time(server_url="https://gpanel.eternalzero.cloud/server/0455478b
                             page.goto(server_url, wait_until="networkidle", timeout=60000)
                         login_success = True
 
+                        # 登录成功后，获取并更新新的cookie
+                        current_cookies = page.context.cookies()
+                        remember_cookie = None
+                        for cookie in current_cookies:
+                            if cookie['name'] == 'remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d':
+                                remember_cookie = cookie['value']
+                                break
+
+                        if remember_cookie:
+                            print("获取到新的remember_web cookie，正在更新GitHub secret...")
+                            update_github_secret('REMEMBER_WEB_COOKIE', remember_cookie)
+                        else:
+                            print("警告: 未找到remember_web cookie")
+
                 # --- 如果 REMEMBER_WEB_COOKIE 不可用或失败，则回退到邮箱密码登录 ---
                 if not login_success:
                     if not (login_email and login_password):
@@ -96,6 +211,21 @@ def add_server_time(server_url="https://gpanel.eternalzero.cloud/server/0455478b
                         page.wait_for_url(server_url, timeout=60000)
                         print("邮箱密码登录成功，已跳转到服务器页面。")
                         login_success = True
+
+                        # 登录成功后，获取并更新新的cookie
+                        current_cookies = page.context.cookies()
+                        remember_cookie = None
+                        for cookie in current_cookies:
+                            if cookie['name'] == 'remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d':
+                                remember_cookie = cookie['value']
+                                break
+
+                        if remember_cookie:
+                            print("获取到新的remember_web cookie，正在更新GitHub secret...")
+                            update_github_secret('REMEMBER_WEB_COOKIE', remember_cookie)
+                        else:
+                            print("警告: 未找到remember_web cookie")
+
                     except Exception:
                         error_message_selector = '.alert.alert-danger, .error-message, .form-error'
                         error_element = page.query_selector(error_message_selector)
