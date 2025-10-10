@@ -4,7 +4,7 @@ on:
   schedule:
     # 每4小时运行一次
     # 你可以根据需要调整这个时间
-    - cron: '0 0,2,4,6 * * *'
+    - cron: '0 22,0,2,4 * * *'
   workflow_dispatch: # 允许手动触发 workflow
 
 jobs:
